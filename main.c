@@ -28,7 +28,7 @@ void generateUUID() {
     snprintf(uuid, sizeof(uuid), "%08x-%04x-%04x-%04x-%08x%04x",
              random1,               
              (random2 >> 16) & 0xFFFF,  
-             random2 & 0xFFFF,         
+             random2 & 0xFFFF,          
              (random3 >> 16) & 0xFFFF, 
              random3 & 0xFFFFFFFF,      
              random4 & 0xFFFF);         
