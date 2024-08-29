@@ -1,6 +1,5 @@
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include <HTTPClient.h>
 #include <time.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -8,11 +7,8 @@
 
 #define SSID "your_SSID"
 #define PASSWORD "your_PASSWORD"
-
 #define BUTTON_PIN 5
-
-AsyncWebServer server(932);
-AsyncWebSocket ws("/ws");
+#define ENDPOINT "http://your_endpoint_here"  // Replace with your actual endpoint
 
 String cachedUUID;
 SemaphoreHandle_t wifiSemaphore;
@@ -69,42 +65,40 @@ void generateUUIDTask(void* parameter) {
     vTaskDelete(NULL);
 }
 
-void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
-    if (type == WS_EVT_CONNECT) {
-        Serial.println("WebSocket client connected");
-        xSemaphoreTake(uuidSemaphore, portMAX_DELAY);
-        
-        // Transmit the initial state immediately upon connection
-        time_t now;
-        struct tm timeinfo;
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        char timeStr[64];
-        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-        bool isButtonPressed = digitalRead(BUTTON_PIN) == LOW;  // Assuming LOW means pressed
-        String buttonState = isButtonPressed ? "Pressed" : "Not Pressed";
-        String message = String("UUID: ") + cachedUUID + ", Time: " + timeStr + ", Button: " + buttonState;
-        client->text(message);
-        
-        xSemaphoreGive(uuidSemaphore);
-    }
-}
-
-void sendButtonStateTask(void* parameter) {
+void sendHttpRequestIfButtonPressedTask(void* parameter) {
+    bool lastButtonState = HIGH;  // Assume button is not pressed initially
     while (true) {
-        time_t now;
-        struct tm timeinfo;
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        char timeStr[64];
-        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-        
         bool isButtonPressed = digitalRead(BUTTON_PIN) == LOW;  // Assuming LOW means pressed
-        String buttonState = isButtonPressed ? "Pressed" : "Not Pressed";
-        String message = String("UUID: ") + cachedUUID + ", Time: " + timeStr + ", Button: " + buttonState;
+        if (isButtonPressed && lastButtonState == HIGH) {  // Button was pressed now but was not pressed before
+            // Button press detected, send HTTP request
+            time_t now;
+            struct tm timeinfo;
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            char timeStr[64];
+            strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+            String payload = String("{\"uuid\":\"") + cachedUUID + "\", \"time\":\"" + timeStr + "\", \"button\":\"Pressed\"}";
+
+            if (WiFi.status() == WL_CONNECTED) {
+                HTTPClient http;
+                http.begin(ENDPOINT);  // Initialize HTTP connection
+                http.addHeader("Content-Type", "application/json");
+
+                int httpResponseCode = http.POST(payload);  // Send POST request
+                if (httpResponseCode > 0) {
+                    Serial.printf("HTTP Response code: %d\n", httpResponseCode);
+                } else {
+                    Serial.printf("Error sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
+                }
+                http.end();
+            } else {
+                Serial.println("WiFi not connected, cannot send data.");
+            }
+        }
         
-        ws.textAll(message);  // Broadcast to all connected clients
-        vTaskDelay(1000 / portTICK_PERIOD_MS);  // Send every 1 second
+        lastButtonState = isButtonPressed;  // Update the button state
+        vTaskDelay(100 / portTICK_PERIOD_MS);  // Check every 100 ms
     }
 }
 
@@ -119,13 +113,9 @@ void setup() {
     xTaskCreate(initWifiTask, "WiFi Connection Task", 4096, NULL, 1, NULL);
     xTaskCreate(setupTimeTask, "Time Setup Task", 4096, NULL, 1, NULL);
     xTaskCreate(generateUUIDTask, "UUID Generation Task", 4096, NULL, 1, NULL);
-    xTaskCreate(sendButtonStateTask, "Button State Task", 4096, NULL, 1, NULL);
-
-    ws.onEvent(onWsEvent);
-    server.addHandler(&ws);
-    server.begin();
+    xTaskCreate(sendHttpRequestIfButtonPressedTask, "HTTP Request Task", 4096, NULL, 1, NULL);
 }
 
 void loop() {
-    ws.cleanupClients();
+    // Nothing to do here, everything is handled by FreeRTOS tasks
 }
