@@ -95,10 +95,10 @@ void sendHttpRequest1(String endpoint, String buttonState) {
 }
 void sendHttpRequest2(String endpoint, String buttonState) {
  
-    String payload = String("{\"uuid\":\"") + cachedUUID + "\", \"time\":\"" + timeStr + "\", \"button\":\"" + buttonState + "\"}";
+    String payload = String("{\"uuid\":\"") + cachedUUID +  "\", \"button\":\"" + buttonState + "\"}";
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
-        http.begin(endpoint)
+        http.begin(endpoint);
         http.addHeader("Content-Type", "application/json");
 
         int httpResponseCode = http.POST(payload);  
