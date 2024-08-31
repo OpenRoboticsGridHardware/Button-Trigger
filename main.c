@@ -33,7 +33,7 @@ void generateUUID() {
 }
 
 void initWifiTask(void* parameter) {
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_STA);    
     WiFi.begin(SSID, PASSWORD);
     Serial.println("Connecting to Wi-Fi...");
 
