@@ -7,8 +7,10 @@
 
 #define SSID "your_SSID"
 #define PASSWORD "your_PASSWORD"
-#define BUTTON_PIN 5
-#define ENDPOINT "http://your_endpoint_here"  // Replace with your actual endpoint
+#define BUTTON1_PIN 5
+#define BUTTON2_PIN 6
+#define ENDPOINT1 "http://your_endpoint1_here"  
+#define ENDPOINT2 "http://your_endpoint2_here" 
 
 String cachedUUID;
 SemaphoreHandle_t wifiSemaphore;
@@ -33,7 +35,7 @@ void generateUUID() {
 }
 
 void initWifiTask(void* parameter) {
-    WiFi.mode(WIFI_STA);    
+    WiFi.mode(WIFI_STA);
     WiFi.begin(SSID, PASSWORD);
     Serial.println("Connecting to Wi-Fi...");
 
@@ -65,46 +67,76 @@ void generateUUIDTask(void* parameter) {
     vTaskDelete(NULL);
 }
 
-void sendHttpRequestIfButtonPressedTask(void* parameter) {
-    bool lastButtonState = HIGH;  // Assume button is not pressed initially
-    while (true) {
-        bool isButtonPressed = digitalRead(BUTTON_PIN) == LOW;  // Assuming LOW means pressed
-        if (isButtonPressed && lastButtonState == HIGH) {  // Button was pressed now but was not pressed before
-            // Button press detected, send HTTP request
-            time_t now;
-            struct tm timeinfo;
-            time(&now);
-            localtime_r(&now, &timeinfo);
-            char timeStr[64];
-            strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+void sendHttpRequest1(String endpoint, String buttonState) {
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    char timeStr[64];
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
 
-            String payload = String("{\"uuid\":\"") + cachedUUID + "\", \"time\":\"" + timeStr + "\", \"button\":\"Pressed\"}";
+    String payload = String("{\"uuid\":\"") + cachedUUID + "\", \"time\":\"" + timeStr + "\", \"button\":\"" + buttonState + "\"}";
 
-            if (WiFi.status() == WL_CONNECTED) {
-                HTTPClient http;
-                http.begin(ENDPOINT);  // Initialize HTTP connection
-                http.addHeader("Content-Type", "application/json");
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        http.begin(endpoint);  // Initialize HTTP connection
+        http.addHeader("Content-Type", "application/json");
 
-                int httpResponseCode = http.POST(payload);  // Send POST request
-                if (httpResponseCode > 0) {
-                    Serial.printf("HTTP Response code: %d\n", httpResponseCode);
-                } else {
-                    Serial.printf("Error sending POST: %s\n", http.errorToString(httpResponseCode).c_str());
-                }
-                http.end();
-            } else {
-                Serial.println("WiFi not connected, cannot send data.");
-            }
+        int httpResponseCode = http.POST(payload);  // Send POST request
+        if (httpResponseCode > 0) {
+            Serial.printf("HTTP Response code from %s: %d\n", endpoint.c_str(), httpResponseCode);
+        } else {
+            Serial.printf("Error sending POST to %s: %s\n", endpoint.c_str(), http.errorToString(httpResponseCode).c_str());
         }
-        
-        lastButtonState = isButtonPressed;  // Update the button state
-        vTaskDelay(100 / portTICK_PERIOD_MS);  // Check every 100 ms
+        http.end();
+    } else {
+        Serial.println("WiFi not connected, cannot send data.");
+    }
+}
+void sendHttpRequest2(String endpoint, String buttonState) {
+ 
+    String payload = String("{\"uuid\":\"") + cachedUUID + "\", \"time\":\"" + timeStr + "\", \"button\":\"" + buttonState + "\"}";
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        http.begin(endpoint)
+        http.addHeader("Content-Type", "application/json");
+
+        int httpResponseCode = http.POST(payload);  
+        if (httpResponseCode > 0) {
+            Serial.printf("HTTP Response code from %s: %d\n", endpoint.c_str(), httpResponseCode);
+        } else {
+            Serial.printf("Error sending POST to %s: %s\n", endpoint.c_str(), http.errorToString(httpResponseCode).c_str());
+        }
+        http.end();
+    } else {
+        Serial.println("WiFi not connected, cannot send data.");
+    }
+}
+void sendHttpRequestIfButtonPressedTask(void* parameter) {
+    bool lastButton1State = HIGH; 
+    bool lastButton2State = HIGH; 
+
+    while (true) {
+        bool isButton1Pressed = digitalRead(BUTTON1_PIN) == LOW;  
+        bool isButton2Pressed = digitalRead(BUTTON2_PIN) == LOW;  
+
+        if (isButton1Pressed && lastButton1State == HIGH) { 
+            sendHttpRequest1(ENDPOINT1, "Button1 Pressed");
+        }
+
+        if (isButton2Pressed && lastButton2State == HIGH) { 
+            sendHttpRequest2(ENDPOINT2, "Button2 Pressed");
+        }
+        lastButton1State = isButton1Pressed;  
+        lastButton2State = isButton2Pressed;  
+        vTaskDelay(100 / portTICK_PERIOD_MS);  
     }
 }
 
 void setup() {
     Serial.begin(115200);
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(BUTTON1_PIN, INPUT_PULLUP);
+    pinMode(BUTTON2_PIN, INPUT_PULLUP);
 
     wifiSemaphore = xSemaphoreCreateBinary();
     timeSemaphore = xSemaphoreCreateBinary();
@@ -117,5 +149,5 @@ void setup() {
 }
 
 void loop() {
-    // Nothing to do here, everything is handled by FreeRTOS tasks
+
 }
